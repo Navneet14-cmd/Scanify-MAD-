@@ -41,7 +41,7 @@ const App = () => {
       {/* TextInput for the user to enter their link */}
       <TextInput
         style={styles.input}
-        placeholder="Enter your link here (e.g., https://google.com)"
+        placeholder="Enter your link here"
         value={inputText}
         onChangeText={setInputText} // Update inputText state as user types
         autoCapitalize="none" // Don't auto-capitalize the input
