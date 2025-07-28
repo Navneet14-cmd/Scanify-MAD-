@@ -389,10 +389,10 @@ function HomeScreen({ navigation, themeColors }) {
         <LiquidChromeBackground themeColors={themeColors} />
         <SafeAreaView style={styles.container}>
           <Animated.View style={[styles.card, floatingStyle, entryStyle, {marginTop: 20}]}>
-            <Image source={{ uri: 'https://avatars.githubusercontent.com/u/583231?v=4' }} style={styles.profileImage} />
-            <Text style={styles.name}>Navneet Pant</Text>
+            <Image source={{ uri: 'https://instagram.fdel25-1.fna.fbcdn.net/v/t51.2885-19/368152426_1328993228011266_2840224837132296428_n.jpg?stp=dst-jpg_s320x320_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDU2LmMyIn0&_nc_ht=instagram.fdel25-1.fna.fbcdn.net&_nc_cat=106&_nc_oc=Q6cZ2QEy2jnWpaps-S_nRJ3cNLXv7GNAwYZk8B_L_rxNwg_d6nHC6PVGFgHEdS73g5SOrUJVLdgkZlWAGCkxk5EoYF_-&_nc_ohc=VQbcOZqK20MQ7kNvwFCepGj&_nc_gid=cAFkTW0EUMSuwA_iEqxjPA&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AfRHE2iml_hAS6GmM6qlgwLwbloCxgAQA9EEHbAOh8n6FQ&oe=688D4439&_nc_sid=8b3546' }} style={styles.profileImage} />
+            <Text style={styles.name}>SCANIFY</Text>
             <Text style={styles.username}>@Navneet14-cmd</Text>
-            <Text style={styles.bio}>Welcome to my enhanced QR App! 🚀 Generate, scan, and manage QR codes with a sleek new interface.</Text>
+            <Text style={styles.bio}>Welcome to Scanify! 🚀 Generate, scan, and manage QR codes with a sleek interface.</Text>
           </Animated.View>
 
           <Animated.View style={[entryStyle, {width: '100%'}]}>
@@ -441,7 +441,7 @@ function CustomDrawerContent(props) {
   return (
     <View style={{ flex: 1 }}>
       <DrawerContentScrollView {...props} style={{ backgroundColor: themeColors.card }}>
-        <View style={styles.drawerHeader}><Text style={styles.title}>QR App</Text></View>
+        <View style={styles.drawerHeader}><Text style={styles.title}>SCANIFY</Text></View>
         <DrawerItem label="Home" labelStyle={{ color: themeColors.text, fontWeight: '600' }} onPress={() => props.navigation.navigate('Home')} />
         <DrawerItem label="QR Code Generator" labelStyle={{ color: themeColors.text, fontWeight: '600' }} onPress={() => props.navigation.navigate('QRGenerator')} />
         <DrawerItem label="QR Code Scanner" labelStyle={{ color: themeColors.text, fontWeight: '600' }} onPress={() => props.navigation.navigate('QRScanner')} />
@@ -473,7 +473,6 @@ export default function App() {
   );
 }
 
-// --- DYNAMIC STYLES ---
 const getStyles = (themeColors) => StyleSheet.create({
     screenContainer: { flex: 1 },
     scannerContainer: { flex: 1, flexDirection: 'column', justifyContent: 'center' },
