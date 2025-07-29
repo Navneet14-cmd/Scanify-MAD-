@@ -18,7 +18,8 @@ import {
   Dimensions,
 } from 'react-native';
 
-import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
+// THIS IS THE FIX: Import 'useIsFocused' from react-navigation
+import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
 import QRCode from 'react-native-qrcode-svg';
 import RNPickerSelect from 'react-native-picker-select';
@@ -30,6 +31,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { GLView } from 'expo-gl';
+
+// --- THEME DEFINITIONS --- //
 const CustomDarkTheme = {
   ...DarkTheme,
   colors: {
@@ -56,9 +59,21 @@ const CustomDefaultTheme = {
 
 const Drawer = createDrawerNavigator();
 
+// --- COMPONENTS --- //
+
 const LiquidChromeBackground = ({ themeColors }) => {
     const { width, height } = Dimensions.get('window');
     const mousePos = useRef(new Animated.ValueXY({ x: 0.5, y: 0.5 })).current;
+    const mouseCoords = useRef({ x: 0.5, y: 0.5 });
+
+    useEffect(() => {
+        const listener = mousePos.addListener(value => {
+            mouseCoords.current = value;
+        });
+        return () => {
+            mousePos.removeListener(listener);
+        };
+    }, []);
 
     const panResponder = useRef(
         PanResponder.create({
@@ -147,7 +162,7 @@ const LiquidChromeBackground = ({ themeColors }) => {
             gl.uniform1f(uTime, (Date.now() - startTime) * 0.001 * 0.2);
             gl.uniform3f(uResolution, gl.drawingBufferWidth, gl.drawingBufferHeight, 1);
             gl.uniform3fv(uBaseColor, themeColors.liquidBase);
-            gl.uniform2f(uMouse, mousePos.x._value, mousePos.y._value);
+            gl.uniform2f(uMouse, mouseCoords.current.x, mouseCoords.current.y);
 
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             gl.endFrameEXP();
@@ -162,7 +177,6 @@ const LiquidChromeBackground = ({ themeColors }) => {
         </View>
     );
 };
-
 
 function QRGeneratorScreen({ route, navigation, themeColors }) {
   const [type, setType] = useState('url');
@@ -187,9 +201,9 @@ function QRGeneratorScreen({ route, navigation, themeColors }) {
             const parts = itemToReload.value.match(/S:(.*?);P:(.*?);;/);
             if(parts) { setSsid(parts[1] || ''); setPassword(parts[2] || ''); }
         } else if (itemToReload.type === 'vcard') {
-            const nameMatch = itemToReload.value.match(/FN:(.*)/);
-            const telMatch = itemToReload.value.match(/TEL:(.*)/);
-            const emailMatch = itemToReload.value.match(/EMAIL:(.*)/);
+            const nameMatch = itemToReload.value.match(/FN:([^\n]*)/);
+            const telMatch = itemToReload.value.match(/TEL:([^\n]*)/);
+            const emailMatch = itemToReload.value.match(/EMAIL:([^\n]*)/);
             setVCardName(nameMatch ? nameMatch[1].trim() : '');
             setVCardPhone(telMatch ? telMatch[1].trim() : '');
             setVCardEmail(emailMatch ? emailMatch[1].trim() : '');
@@ -205,6 +219,14 @@ function QRGeneratorScreen({ route, navigation, themeColors }) {
       default: return inputText;
     }
   };
+  
+  const isQrDataEmpty = () => {
+    switch (type) {
+      case 'wifi': return !ssid.trim();
+      case 'vcard': return !vCardName.trim() && !vCardPhone.trim() && !vCardEmail.trim();
+      default: return !inputText.trim();
+    }
+  };
 
   useEffect(() => {
     const handler = setTimeout(() => setQrValue(getQRValue()), 300);
@@ -213,7 +235,7 @@ function QRGeneratorScreen({ route, navigation, themeColors }) {
 
   const storeHistory = async () => {
     const valueToSave = getQRValue();
-    if (!valueToSave || valueToSave.trim() === '' || valueToSave.includes('FN:\nTEL:\nEMAIL:')) return;
+    if (isQrDataEmpty()) return;
     try {
       const newEntry = { id: Date.now(), type, value: valueToSave, date: new Date().toISOString() };
       const existingHistory = await AsyncStorage.getItem('@qr_history');
@@ -225,7 +247,7 @@ function QRGeneratorScreen({ route, navigation, themeColors }) {
   };
 
   const shareQRCode = async () => {
-    if (!qrRef.current || !qrValue) return;
+    if (!qrRef.current || isQrDataEmpty()) return;
     storeHistory();
     qrRef.current.toDataURL(async (data) => {
       const path = `${FileSystem.cacheDirectory}qr-code.png`;
@@ -235,8 +257,8 @@ function QRGeneratorScreen({ route, navigation, themeColors }) {
   };
 
   const copyToClipboard = () => {
-    if (!qrValue) return;
-    Clipboard.setStringAsync(qrValue);
+    if (isQrDataEmpty()) return;
+    Clipboard.setStringAsync(getQRValue());
     Alert.alert('Copied!', 'QR Code data has been copied to your clipboard.');
   };
 
@@ -276,8 +298,31 @@ function QRGeneratorScreen({ route, navigation, themeColors }) {
             {renderInputs()}
             <TouchableOpacity style={styles.actionButton} onPress={pickImage}><Text style={styles.actionButtonText}>{imageUri ? 'Change Center Image' : 'Add Center Image'}</Text></TouchableOpacity>
             {imageUri && (<View style={styles.imagePreviewContainer}><Image source={{ uri: imageUri }} style={styles.imagePreview} /><TouchableOpacity style={styles.removeButton} onPress={() => setImageUri(null)}><Text style={styles.removeButtonText}>Remove</Text></TouchableOpacity></View>)}
-            <View style={[styles.card, { marginTop: 15, padding: 25 }]}>{qrValue.trim() !== '' && !qrValue.includes('FN:\nTEL:\nEMAIL:') ? <QRCode value={qrValue} size={220} getRef={qrRef} logo={imageUri ? { uri: imageUri } : undefined} logoSize={45} logoBackgroundColor="transparent" backgroundColor={themeColors.card} color={themeColors.text} /> : <View style={styles.placeholderQR}><Text style={styles.placeholderText}>Enter input to generate QR Code</Text></View>}</View>
-            {qrValue.trim() !== '' && !qrValue.includes('FN:\nTEL:\nEMAIL:') && (<View style={styles.buttonRow}><TouchableOpacity style={styles.actionButton} onPress={copyToClipboard}><Text style={styles.actionButtonText}>Copy</Text></TouchableOpacity><TouchableOpacity style={styles.actionButton} onPress={shareQRCode}><Text style={styles.actionButtonText}>Share</Text></TouchableOpacity></View>)}
+            
+            <View style={[styles.card, { marginTop: 15, padding: 25 }]}>
+              {!isQrDataEmpty() ? 
+                <QRCode 
+                  value={getQRValue()} 
+                  size={220} 
+                  getRef={qrRef} 
+                  logo={imageUri ? { uri: imageUri } : undefined} 
+                  logoSize={45} 
+                  logoBackgroundColor="transparent" 
+                  backgroundColor="transparent" 
+                  color={themeColors.text}
+                  ecl={imageUri ? 'H' : 'M'}
+                /> 
+                : 
+                <View style={styles.placeholderQR}><Text style={styles.placeholderText}>Enter input to generate QR Code</Text></View>
+              }
+            </View>
+
+            {!isQrDataEmpty() && (
+              <View style={styles.buttonRow}>
+                <TouchableOpacity style={styles.actionButton} onPress={copyToClipboard}><Text style={styles.actionButtonText}>Copy</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.actionButton} onPress={shareQRCode}><Text style={styles.actionButtonText}>Share</Text></TouchableOpacity>
+              </View>
+            )}
         </SafeAreaView>
     </View>
   );
@@ -287,8 +332,21 @@ function QRScannerScreen({ themeColors }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const styles = getStyles(themeColors);
+  
+  // THIS IS THE FIX: Check if the screen is currently focused.
+  const isFocused = useIsFocused();
+
+  // This effect resets the scanner's state when you navigate back to the screen.
+  useFocusEffect(
+    React.useCallback(() => {
+      setScanned(false);
+    }, [])
+  );
 
   const handleBarCodeScanned = (scanningResult) => {
+    if (scanned) {
+      return; // Prevent multiple scans from being handled
+    }
     if (scanningResult.data) {
         setScanned(true);
         const data = scanningResult.data;
@@ -321,12 +379,25 @@ function QRScannerScreen({ themeColors }) {
 
   return (
     <View style={styles.scannerContainer}>
-      <CameraView onBarcodeScanned={scanned ? undefined : handleBarCodeScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} style={StyleSheet.absoluteFillObject} />
-      <View style={styles.scannerOverlay}>
-        <Text style={styles.scannerText}>Scan a QR Code</Text>
-        <View style={styles.scannerBox} />
-      </View>
-      {scanned && <TouchableOpacity style={styles.scanAgainButton} onPress={() => setScanned(false)}><Text style={styles.actionButtonText}>Tap to Scan Again</Text></TouchableOpacity>}
+      {/* THIS IS THE FIX: Only render the CameraView when the screen is focused. */}
+      {isFocused && (
+        <>
+          <CameraView 
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned} 
+            barcodeScannerSettings={{ barcodeTypes: ["qr"] }} 
+            style={StyleSheet.absoluteFillObject} 
+          />
+          <View style={styles.scannerOverlay}>
+            <Text style={styles.scannerText}>Scan a QR Code</Text>
+            <View style={styles.scannerBox} />
+          </View>
+          {scanned && (
+            <TouchableOpacity style={styles.scanAgainButton} onPress={() => setScanned(false)}>
+              <Text style={styles.actionButtonText}>Tap to Scan Again</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
     </View>
   );
 }
@@ -389,7 +460,7 @@ function HomeScreen({ navigation, themeColors }) {
         <LiquidChromeBackground themeColors={themeColors} />
         <SafeAreaView style={styles.container}>
           <Animated.View style={[styles.card, floatingStyle, entryStyle, {marginTop: 20}]}>
-            <Image source={{ uri: 'https://instagram.fdel25-1.fna.fbcdn.net/v/t51.2885-19/368152426_1328993228011266_2840224837132296428_n.jpg?stp=dst-jpg_s320x320_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDU2LmMyIn0&_nc_ht=instagram.fdel25-1.fna.fbcdn.net&_nc_cat=106&_nc_oc=Q6cZ2QEy2jnWpaps-S_nRJ3cNLXv7GNAwYZk8B_L_rxNwg_d6nHC6PVGFgHEdS73g5SOrUJVLdgkZlWAGCkxk5EoYF_-&_nc_ohc=VQbcOZqK20MQ7kNvwFCepGj&_nc_gid=cAFkTW0EUMSuwA_iEqxjPA&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AfRHE2iml_hAS6GmM6qlgwLwbloCxgAQA9EEHbAOh8n6FQ&oe=688D4439&_nc_sid=8b3546' }} style={styles.profileImage} />
+            <Image source={{ uri: 'https://instagram.fagr1-2.fna.fbcdn.net/v/t51.2885-19/368152426_1328993228011266_2840224837132296428_n.jpg?stp=dst-jpg_s320x320_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDU2LmMyIn0&_nc_ht=instagram.fagr1-2.fna.fbcdn.net&_nc_cat=106&_nc_oc=Q6cZ2QEvsHuy8eHEGUd8IhEwuDdduHHj22dscA877ODR4KDjBFRk4aAeT9KveuzqyP3KkhwhVivAVnXhLKBVQAUAUUl3&_nc_ohc=VQbcOZqK20MQ7kNvwH9Ot05&_nc_gid=38zUXno6-NTe6DlMffmB6A&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AfTjfaD7WZgbvuezCBA3cwML6Fiqrq6C7On-EuzXyF8DUQ&oe=688E5D79&_nc_sid=8b3546' }} style={styles.profileImage} />
             <Text style={styles.name}>SCANIFY</Text>
             <Text style={styles.username}>@Navneet14-cmd</Text>
             <Text style={styles.bio}>Welcome to Scanify! 🚀 Generate, scan, and manage QR codes with a sleek interface.</Text>
@@ -446,12 +517,13 @@ function CustomDrawerContent(props) {
         <DrawerItem label="QR Code Generator" labelStyle={{ color: themeColors.text, fontWeight: '600' }} onPress={() => props.navigation.navigate('QRGenerator')} />
         <DrawerItem label="QR Code Scanner" labelStyle={{ color: themeColors.text, fontWeight: '600' }} onPress={() => props.navigation.navigate('QRScanner')} />
         <DrawerItem label="History" labelStyle={{ color: themeColors.text, fontWeight: '600' }} onPress={() => props.navigation.navigate('History')} />
-        <DrawerItem label="Settings" labelStyle={{ color: themeColors.text, fontWeight: '600' }} onPress={() => props.navigation.navigate('Theme')} />
+        <DrawerItem label="Settings" labelStyle={{ color: themeColors.text, fontWeight: '600' }} onPress={() => props.navigation.navigate('Settings')} />
       </DrawerContentScrollView>
     </View>
   );
 }
 
+// --- APP ROOT --- //
 export default function App() {
   const systemScheme = useColorScheme();
   const [isDark, setIsDark] = useState(systemScheme === 'dark');
@@ -459,40 +531,44 @@ export default function App() {
 
   return (
     <>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#000000' : '#f2f2f7'} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       <NavigationContainer theme={theme}>
-        <Drawer.Navigator drawerContent={(props) => <CustomDrawerContent {...props} themeColors={theme.colors} />} screenOptions={{ headerShown: false, drawerStyle: { backgroundColor: 'transparent', width: 240 } }}>
+        <Drawer.Navigator 
+            drawerContent={(props) => <CustomDrawerContent {...props} themeColors={theme.colors} />} 
+            screenOptions={{ headerShown: false, drawerStyle: { backgroundColor: 'transparent', width: 260 } }}
+        >
           <Drawer.Screen name="Home">{(props) => <HomeScreen {...props} themeColors={theme.colors} />}</Drawer.Screen>
           <Drawer.Screen name="QRGenerator">{(props) => <QRGeneratorScreen {...props} themeColors={theme.colors} />}</Drawer.Screen>
           <Drawer.Screen name="QRScanner">{(props) => <QRScannerScreen {...props} themeColors={theme.colors} />}</Drawer.Screen>
           <Drawer.Screen name="History">{(props) => <HistoryScreen {...props} themeColors={theme.colors} />}</Drawer.Screen>
-          <Drawer.Screen name="Theme">{(props) => <SettingsScreen {...props} isDark={isDark} setIsDark={setIsDark} themeColors={theme.colors} />}</Drawer.Screen>
+          <Drawer.Screen name="Settings">{(props) => <SettingsScreen {...props} isDark={isDark} setIsDark={setIsDark} themeColors={theme.colors} />}</Drawer.Screen>
         </Drawer.Navigator>
       </NavigationContainer>
     </>
   );
 }
 
+// --- STYLESHEETS --- //
 const getStyles = (themeColors) => StyleSheet.create({
-    screenContainer: { flex: 1 },
+    screenContainer: { flex: 1, backgroundColor: themeColors.background },
     scannerContainer: { flex: 1, flexDirection: 'column', justifyContent: 'center' },
     scannerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     scannerBox: { width: 250, height: 250, borderWidth: 2, borderColor: '#fff', borderRadius: 10 },
     scannerText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 20, backgroundColor: 'rgba(0,0,0,0.7)', padding: 10, borderRadius: 5 },
     scanAgainButton: { position: 'absolute', bottom: 50, alignSelf: 'center', backgroundColor: themeColors.primary, paddingVertical: 12, paddingHorizontal: 25, borderRadius: 30 },
-    historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+    historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingBottom: 10 },
     clearButtonText: { color: themeColors.primary, fontWeight: '600', fontSize: 16, padding: 10 },
     historyItem: { backgroundColor: themeColors.card, padding: 15, borderRadius: 12, marginBottom: 10, width: '100%', borderWidth: 1, borderColor: themeColors.border },
     historyType: { color: themeColors.primary, fontWeight: 'bold', fontSize: 14, marginBottom: 4 },
     historyValue: { color: themeColors.text, fontSize: 16, marginBottom: 8 },
     historyDate: { color: themeColors.text + '99', fontSize: 12, textAlign: 'right' },
-    container: { flex: 1, alignItems: 'center', paddingTop: StatusBar.currentHeight + 20, paddingHorizontal: 20 },
+    container: { flex: 1, alignItems: 'center', paddingTop: (StatusBar.currentHeight || 0) + 20, paddingHorizontal: 20 },
     card: { backgroundColor: themeColors.card, borderRadius: 20, padding: 20, width: '95%', alignItems: 'center', borderWidth: 1, borderColor: themeColors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 },
     title: { fontSize: 32, fontWeight: 'bold', color: themeColors.text, marginBottom: 25, textAlign: 'center' },
     name: { fontSize: 24, fontWeight: 'bold', color: themeColors.text },
     username: { fontSize: 16, color: themeColors.text + 'aa', marginBottom: 12 },
     bio: { fontSize: 15, textAlign: 'center', color: themeColors.text, lineHeight: 22 },
-    input: { width: '100%', height: 50, backgroundColor: themeColors.card, borderRadius: 12, paddingHorizontal: 15, marginBottom: 15, fontSize: 16, color: themeColors.text, borderWidth: 1, borderColor: themeColors.border },
+    input: { width: '100%', height: 50, backgroundColor: themeColors.background, borderRadius: 12, paddingHorizontal: 15, marginBottom: 15, fontSize: 16, color: themeColors.text, borderWidth: 1, borderColor: themeColors.border },
     imagePreviewContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: themeColors.card, padding: 8, borderRadius: 12, marginBottom: 10 },
     imagePreview: { width: 40, height: 40, borderRadius: 8 },
     removeButton: { marginLeft: 10, padding: 8 },
@@ -513,8 +589,7 @@ const getStyles = (themeColors) => StyleSheet.create({
 });
 
 const getPickerStyle = (themeColors) => StyleSheet.create({
-    inputIOS: { fontSize: 16, paddingVertical: 12, paddingHorizontal: 15, borderWidth: 1, borderColor: themeColors.border, borderRadius: 12, color: themeColors.text, backgroundColor: themeColors.card, marginBottom: 15 },
-    inputAndroid: { fontSize: 16, paddingHorizontal: 15, paddingVertical: 12, borderWidth: 1, borderColor: themeColors.border, borderRadius: 12, color: themeColors.text, backgroundColor: themeColors.card, marginBottom: 15 },
+    inputIOS: { fontSize: 16, paddingVertical: 12, paddingHorizontal: 15, borderWidth: 1, borderColor: themeColors.border, borderRadius: 12, color: themeColors.text, backgroundColor: themeColors.background, marginBottom: 15 },
+    inputAndroid: { fontSize: 16, paddingHorizontal: 15, paddingVertical: 12, borderWidth: 1, borderColor: themeColors.border, borderRadius: 12, color: themeColors.text, backgroundColor: themeColors.background, marginBottom: 15 },
     iconContainer: { top: 15, right: 15 },
 });
-
